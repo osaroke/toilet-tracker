@@ -1,0 +1,18 @@
+{
+  "name": "お通じ記録",
+  "short_name": "お通じ",
+  "description": "お通じの記録・ラップタイム・統計管理アプリ",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#F0FAF5",
+  "theme_color": "#2D6A4F",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'><rect width='512' height='512' rx='112' fill='%232D6A4F'/><text y='.85em' font-size='360' x='50%' text-anchor='middle'>🌿</text></svg>",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

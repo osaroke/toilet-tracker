@@ -1,0 +1,1152 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+
+<!-- PWA / iOS -->
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="お通じ記録">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#2D6A4F">
+
+<!-- SEO / OGP -->
+<meta name="description" content="お通じの記録・ラップタイム・統計管理アプリ">
+<meta property="og:title" content="お通じ記録">
+<meta property="og:description" content="お通じの記録・ラップタイム・統計管理アプリ">
+<meta property="og:type" content="website">
+
+<!-- PWA manifest (inline) -->
+<link rel="manifest" href="manifest.json">
+
+<!-- Apple touch icons (SVG inline → data URI) -->
+<link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='22' fill='%232D6A4F'/><text y='.9em' font-size='72' x='50%' text-anchor='middle'>🌿</text></svg>">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='22' fill='%232D6A4F'/><text y='.9em' font-size='72' x='50%' text-anchor='middle'>🌿</text></svg>">
+
+<title>お通じ記録</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+body{font-family:'Hiragino Sans','Yu Gothic UI',system-ui,sans-serif;overscroll-behavior:none;-webkit-text-size-adjust:100%}
+#app{max-width:420px;margin:0 auto;min-height:100vh;display:flex;flex-direction:column;padding-bottom:env(safe-area-inset-bottom)}
+button{font-family:inherit;-webkit-appearance:none;touch-action:manipulation;cursor:pointer}
+input,textarea{font-family:inherit;-webkit-appearance:none}
+.cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:4px}
+.cal-cell{aspect-ratio:1;border-radius:10px;border:2px solid transparent;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;padding:0}
+@keyframes ripple{0%{transform:scale(1);opacity:1}100%{transform:scale(2.4);opacity:0}}
+@keyframes burst{0%{transform:scale(0.5);opacity:1}60%{transform:scale(1.2);opacity:1}100%{transform:scale(1);opacity:0}}
+@keyframes slide-up{0%{transform:translateY(40px);opacity:0}100%{transform:translateY(0);opacity:1}}
+@keyframes shake{0%,100%{transform:translateX(0)}20%{transform:translateX(-6px)}40%{transform:translateX(6px)}60%{transform:translateX(-4px)}80%{transform:translateX(4px)}}
+#achievement{position:fixed;inset:0;z-index:500;pointer-events:none;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px}
+#achievement.show{pointer-events:auto}
+.ach-emoji{font-size:72px;animation:burst 1s ease-out forwards}
+.ach-text{background:rgba(0,0,0,.75);color:#fff;padding:12px 28px;border-radius:24px;font-size:18px;font-weight:800;animation:slide-up .4s ease-out forwards;text-align:center;line-height:1.4}
+#ripple-ring{position:absolute;inset:-8px;border-radius:50%;pointer-events:none;display:none}
+#ripple-ring.go{animation:ripple .6s ease-out forwards}
+#toast{position:fixed;top:68px;left:50%;transform:translateX(-50%);padding:10px 20px;border-radius:24px;font-size:13px;font-weight:600;z-index:200;white-space:nowrap;opacity:0;transition:opacity .3s;pointer-events:none}
+#toast.show{opacity:1}
+#modal{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:999;display:none;align-items:center;justify-content:center;padding:20px}
+#modal.show{display:flex}
+#modal-box{border-radius:16px;padding:24px 20px;max-width:320px;width:100%}
+#edit-modal{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:999;display:none;align-items:flex-end;justify-content:center}
+#edit-modal.show{display:flex}
+#edit-box{border-radius:20px 20px 0 0;padding:24px 20px 32px;width:100%;max-width:420px}
+.bar{display:flex;align-items:flex-end;gap:4px;height:120px}
+.bar-col{flex:1;display:flex;flex-direction:column;align-items:center;gap:4px}
+.bar-fill{width:100%;border-radius:4px 4px 0 0;transition:height .4s}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<div id="toast"></div>
+<div id="achievement"></div>
+
+<!-- 確認モーダル -->
+<div id="modal">
+  <div id="modal-box">
+    <p id="modal-msg" style="font-size:15px;line-height:1.6;margin-bottom:20px;white-space:pre-line;text-align:center"></p>
+    <div style="display:flex;gap:10px">
+      <button id="modal-cancel" style="flex:1;padding:12px;border-radius:10px;border:1.5px solid #ccc;background:#fff;color:#666;font-size:14px;font-weight:600">キャンセル</button>
+      <button id="modal-ok" style="flex:1;padding:12px;border-radius:10px;border:none;background:#E07070;color:#fff;font-size:14px;font-weight:700">削除</button>
+    </div>
+  </div>
+</div>
+
+<!-- 編集モーダル -->
+<div id="edit-modal">
+  <div id="edit-box">
+    <div style="font-size:16px;font-weight:700;margin-bottom:16px" id="edit-title">記録を編集</div>
+    <div style="margin-bottom:14px">
+      <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px" id="edit-time-label">時刻</label>
+      <input type="time" id="edit-time" style="width:100%;padding:10px 12px;border-radius:10px;border:1.5px solid #ddd;font-size:16px">
+    </div>
+    <div style="margin-bottom:14px">
+      <label style="font-size:12px;font-weight:600;display:block;margin-bottom:8px" id="edit-feel-label">気分</label>
+      <div style="display:flex;gap:8px" id="feel-btns">
+        <button data-feel="good"  style="flex:1;padding:10px 4px;border-radius:12px;border:2px solid #ddd;background:#fff;font-size:20px;display:flex;flex-direction:column;align-items:center;gap:3px">😊<span style="font-size:10px;font-weight:600;color:#888">スッキリ！</span></button>
+        <button data-feel="normal" style="flex:1;padding:10px 4px;border-radius:12px;border:2px solid #ddd;background:#fff;font-size:20px;display:flex;flex-direction:column;align-items:center;gap:3px">😐<span style="font-size:10px;font-weight:600;color:#888">ふつう</span></button>
+        <button data-feel="bad"   style="flex:1;padding:10px 4px;border-radius:12px;border:2px solid #ddd;background:#fff;font-size:20px;display:flex;flex-direction:column;align-items:center;gap:3px">😩<span style="font-size:10px;font-weight:600;color:#888">うーん…</span></button>
+      </div>
+    </div>
+    <div style="margin-bottom:14px">
+      <label style="font-size:12px;font-weight:600;display:block;margin-bottom:8px" id="edit-hard-label">状態</label>
+      <div style="display:flex;gap:8px" id="hard-btns">
+        <button data-hard="soft"   style="flex:1;padding:10px 4px;border-radius:12px;border:2px solid #ddd;background:#fff;font-size:20px;display:flex;flex-direction:column;align-items:center;gap:3px">💧<span style="font-size:10px;font-weight:600;color:#888">ユルイ</span></button>
+        <button data-hard="normal" style="flex:1;padding:10px 4px;border-radius:12px;border:2px solid #ddd;background:#fff;font-size:20px;display:flex;flex-direction:column;align-items:center;gap:3px">🟤<span style="font-size:10px;font-weight:600;color:#888">ふつう</span></button>
+        <button data-hard="hard"   style="flex:1;padding:10px 4px;border-radius:12px;border:2px solid #ddd;background:#fff;font-size:20px;display:flex;flex-direction:column;align-items:center;gap:3px">🪨<span style="font-size:10px;font-weight:600;color:#888">カタイ</span></button>
+      </div>
+    </div>
+    <div style="margin-bottom:20px">
+      <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px" id="edit-memo-label">メモ（任意）</label>
+      <textarea id="edit-memo" rows="2" style="width:100%;padding:10px 12px;border-radius:10px;border:1.5px solid #ddd;font-size:14px;resize:none;line-height:1.5" placeholder="気になったことなど..."></textarea>
+    </div>
+    <div style="display:flex;gap:10px">
+      <button id="edit-cancel" style="flex:1;padding:12px;border-radius:10px;border:1.5px solid #ccc;background:transparent;font-size:14px;font-weight:600">キャンセル</button>
+      <button id="edit-save" style="flex:1;padding:12px;border-radius:10px;border:none;font-size:14px;font-weight:700;color:#fff">保存</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════
+// テーマ
+// ═══════════════════════════════════════════
+var THEMES = {
+  green:     {label:"ミント",        mode:"light",bg:"#F0FAF5",header:"#2D6A4F",hText:"#fff",ac:"#2D6A4F",ac2:"#40916C",card:"#fff",cbg:"#E8F5F0",sub:"#6B9E87",bdr:"#E8F5F0",tx:"#222",muted:"#888",nav:"#E8F5F0",cEmp:"#fff",cTx:"#333",eBg:"#F0FAF5",sh:"rgba(45,106,79,.08)"},
+  sky:       {label:"スカイ",        mode:"light",bg:"#EEF6FB",header:"#2563A8",hText:"#fff",ac:"#2563A8",ac2:"#3B82C4",card:"#fff",cbg:"#DBEAFE",sub:"#5B8FC4",bdr:"#DBEAFE",tx:"#222",muted:"#888",nav:"#DBEAFE",cEmp:"#fff",cTx:"#333",eBg:"#EEF6FB",sh:"rgba(37,99,168,.08)"},
+  rose:      {label:"ローズ",        mode:"light",bg:"#FDF2F4",header:"#A8304A",hText:"#fff",ac:"#A8304A",ac2:"#C0455F",card:"#fff",cbg:"#FCE7EB",sub:"#C07080",bdr:"#FCE7EB",tx:"#222",muted:"#888",nav:"#FCE7EB",cEmp:"#fff",cTx:"#333",eBg:"#FDF2F4",sh:"rgba(168,48,74,.08)"},
+  amber:     {label:"アンバー",      mode:"light",bg:"#FDFAF0",header:"#92600A",hText:"#fff",ac:"#92600A",ac2:"#B07A1A",card:"#fff",cbg:"#FEF3C7",sub:"#B09060",bdr:"#FEF3C7",tx:"#222",muted:"#888",nav:"#FEF3C7",cEmp:"#fff",cTx:"#333",eBg:"#FDFAF0",sh:"rgba(146,96,10,.08)"},
+  darkGreen: {label:"ダークミント",  mode:"dark", bg:"#0D1F17",header:"#1A3D2B",hText:"#A8D5BC",ac:"#52B788",ac2:"#74C69D",card:"#162D20",cbg:"#1E3D2A",sub:"#74A989",bdr:"#1E3D2A",tx:"#D8F0E4",muted:"#6B9E87",nav:"#1E3D2A",cEmp:"#162D20",cTx:"#C8E8D8",eBg:"#1E3D2A",sh:"rgba(0,0,0,.3)"},
+  darkBlue:  {label:"ダークブルー",  mode:"dark", bg:"#0D1525",header:"#12213D",hText:"#93C5FD",ac:"#3B82F6",ac2:"#60A5FA",card:"#152035",cbg:"#1E2F50",sub:"#6090C0",bdr:"#1E2F50",tx:"#D4E6FF",muted:"#6080A0",nav:"#1E2F50",cEmp:"#152035",cTx:"#C0D8F0",eBg:"#1E2F50",sh:"rgba(0,0,0,.35)"},
+  darkRose:  {label:"ダークローズ",  mode:"dark", bg:"#1F0D12",header:"#3D1220",hText:"#FBBCC8",ac:"#F06080",ac2:"#F48098",card:"#2D1018",cbg:"#4A1828",sub:"#C06070",bdr:"#4A1828",tx:"#FFD8E0",muted:"#A06070",nav:"#4A1828",cEmp:"#2D1018",cTx:"#F0C8D0",eBg:"#4A1828",sh:"rgba(0,0,0,.35)"},
+  darkAmber: {label:"ダークアンバー",mode:"dark", bg:"#1A1200",header:"#332400",hText:"#FCD48A",ac:"#D4A020",ac2:"#E8B830",card:"#261A00",cbg:"#3D2A00",sub:"#A08030",bdr:"#3D2A00",tx:"#FFF0C0",muted:"#A09040",nav:"#3D2A00",cEmp:"#261A00",cTx:"#F0D890",eBg:"#3D2A00",sh:"rgba(0,0,0,.35)"}
+};
+
+// ═══════════════════════════════════════════
+// 状態
+// ═══════════════════════════════════════════
+var records    = {};
+var themeKey   = "green";
+var view       = "today";   // today | calendar | detail | stats
+var calYear    = new Date().getFullYear();
+var calMonth   = new Date().getMonth();
+var detailDate = null;
+var showTheme  = false;
+var showData   = false;
+var statsMode  = "week";    // week | month | hour
+var lapMode    = "avg";     // avg | median
+var calFilter  = "";        // "" | good | normal | bad | soft | hardNormal | hard
+
+// ═══════════════════════════════════════════
+// ユーティリティ
+// ═══════════════════════════════════════════
+function pad(n){ return String(n).padStart(2,"0"); }
+function dateKey(d){ return d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate()); }
+function todayKey(){ return dateKey(new Date()); }
+function todayList(){ return records[todayKey()]||[]; }
+function th(){ return THEMES[themeKey]; }
+
+function fmtTime(d){ return d.toLocaleTimeString("ja-JP",{hour:"2-digit",minute:"2-digit"}); }
+function fmtFull(d){ return d.toLocaleString("ja-JP",{year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit",second:"2-digit"}); }
+function fmtElapsed(ms){
+  if(ms==null) return "—";
+  var s=Math.floor(ms/1000);
+  var h=Math.floor(s/3600);
+  var m=Math.floor((s%3600)/60);
+  var sec=s%60;
+  return pad(h)+":"+pad(m)+":"+pad(sec);
+}
+
+function fmtDur(ms){
+  if(ms==null) return "—";
+  var s=Math.floor(ms/1000), h=Math.floor(s/3600), m=Math.floor((s%3600)/60), sec=s%60;
+  return pad(h)+":"+pad(m)+":"+pad(sec);
+}
+function daysInMonth(y,mo){ return new Date(y,mo+1,0).getDate(); }
+var FEEL_MAP={good:{emoji:"😊",label:"スッキリ！",color:"#52B788"},normal:{emoji:"😐",label:"ふつう",color:"#888"},bad:{emoji:"😩",label:"うーん…",color:"#F06080"}};
+var HARD_MAP={soft:{emoji:"💧",label:"ユルイ",color:"#3B82F6"},normal:{emoji:"🟤",label:"ふつう",color:"#92600A"},hard:{emoji:"🪨",label:"カタイ",color:"#888"}};
+function feelBadge(feel){ var f=FEEL_MAP[feel]; return f?'<span style="font-size:11px;background:'+f.color+'22;color:'+f.color+';border-radius:20px;padding:2px 8px;font-weight:600;white-space:nowrap">'+f.emoji+' '+f.label+'</span>':""; }
+function hardBadge(hard){ var h=HARD_MAP[hard]; return h?'<span style="font-size:11px;background:'+h.color+'22;color:'+h.color+';border-radius:20px;padding:2px 8px;font-weight:600;white-space:nowrap">'+h.emoji+' '+h.label+'</span>':""; }
+function lastRecord(){
+  // 全記録から最新のものを返す
+  var latest=null;
+  Object.values(records).forEach(function(list){
+    list.forEach(function(e){
+      if(!latest||e.timestamp>latest.timestamp) latest=e;
+    });
+  });
+  return latest;
+}
+function firstDow(y,mo){ return new Date(y,mo,1).getDay(); }
+function allLaps(){
+  var laps=[];
+  Object.values(records).forEach(function(l){ l.forEach(function(e){ if(e.lap!=null) laps.push(e.lap); }); });
+  return laps;
+}
+function avgLap(){
+  var laps=allLaps();
+  return laps.length ? Math.round(laps.reduce(function(a,b){return a+b;},0)/laps.length) : null;
+}
+function medianLap(){
+  var laps=allLaps().slice().sort(function(a,b){return a-b;});
+  if(!laps.length) return null;
+  var mid=Math.floor(laps.length/2);
+  return laps.length%2?laps[mid]:Math.round((laps[mid-1]+laps[mid])/2);
+}
+function getCount(y,mo,d){ return (records[y+"-"+pad(mo+1)+"-"+pad(d)]||[]).length; }
+function bestLap(){
+  var laps=allLaps();
+  return laps.length ? Math.min.apply(null,laps) : null;
+}
+function worstLap(){
+  var laps=allLaps();
+  return laps.length ? Math.max.apply(null,laps) : null;
+}
+function calcRatios(){
+  var feelCount={good:0,normal:0,bad:0}, hardCount={soft:0,normal:0,hard:0}, total=0;
+  Object.values(records).forEach(function(l){ l.forEach(function(e){
+    if(e.feel) feelCount[e.feel]=(feelCount[e.feel]||0)+1;
+    if(e.hard) hardCount[e.hard]=(hardCount[e.hard]||0)+1;
+    total++;
+  });});
+  var feelTotal=feelCount.good+feelCount.normal+feelCount.bad;
+  var hardTotal=hardCount.soft+hardCount.normal+hardCount.hard;
+  return {feel:feelCount,hard:hardCount,feelTotal:feelTotal,hardTotal:hardTotal};
+}
+
+function calFilterMatch(entry){
+  if(!calFilter) return false;
+  if(calFilter==="good"||calFilter==="normal_feel"||calFilter==="bad") return entry.feel===calFilter;
+  if(calFilter==="normal") return entry.feel==="normal";
+  if(calFilter==="soft"||calFilter==="hard") return entry.hard===calFilter;
+  if(calFilter==="hardNormal") return entry.hard==="normal";
+  return false;
+}
+
+function dayHasFilter(dk){
+  if(!calFilter) return false;
+  var list=records[dk]||[];
+  return list.some(function(e){
+    if(calFilter==="good") return e.feel==="good";
+    if(calFilter==="normal") return e.feel==="normal";
+    if(calFilter==="bad") return e.feel==="bad";
+    if(calFilter==="soft") return e.hard==="soft";
+    if(calFilter==="hardNormal") return e.hard==="normal";
+    if(calFilter==="hard") return e.hard==="hard";
+    return false;
+  });
+}
+
+function countBg(n){
+  var t=th();
+  if(n===0) return t.cEmp;
+  if(n===1) return t.mode==="dark"?t.ac+"55":t.ac+"33";
+  if(n===2) return t.mode==="dark"?t.ac+"99":t.ac+"77";
+  return t.ac;
+}
+
+// ═══════════════════════════════════════════
+// ストレージ
+// ═══════════════════════════════════════════
+function persist(){
+  try{ localStorage.setItem("otsuji-data",JSON.stringify(records)); }catch(e){}
+  try{ localStorage.setItem("otsuji-theme",themeKey); }catch(e){}
+}
+function loadData(){
+  try{ var r=localStorage.getItem("otsuji-data"); if(r) records=JSON.parse(r); }catch(e){}
+  try{ var t=localStorage.getItem("otsuji-theme"); if(t&&THEMES[t]) themeKey=t; }catch(e){}
+  repairLaps();
+}
+
+// 旧データの日またぎlap=nullを修復
+function repairLaps(){
+  // 全記録を時系列順に並べてlapを再計算
+  var allEntries=[];
+  Object.keys(records).forEach(function(dk){
+    records[dk].forEach(function(e,i){ allEntries.push({dk:dk,idx:i,ts:e.timestamp}); });
+  });
+  allEntries.sort(function(a,b){return a.ts-b.ts;});
+  var repaired=false;
+  for(var i=0;i<allEntries.length;i++){
+    var cur=allEntries[i];
+    var entry=records[cur.dk][cur.idx];
+    var expectedLap=i===0?null:cur.ts-allEntries[i-1].ts;
+    if(entry.lap!==expectedLap){
+      records[cur.dk][cur.idx]=Object.assign({},entry,{lap:expectedLap});
+      repaired=true;
+    }
+  }
+  if(repaired){
+    try{ localStorage.setItem("otsuji-data",JSON.stringify(records)); }catch(e){}
+  }
+}
+
+// ═══════════════════════════════════════════
+// エクスポート
+// ═══════════════════════════════════════════
+function exportJSON(){
+  var b=new Blob([JSON.stringify(records,null,2)],{type:"application/json"});
+  dlBlob(b,"otsuji_"+dateKey(new Date())+".json");
+}
+function exportCSV(){
+  var rows=[["日付","回次","時刻","前回からのラップ(秒)","メモ"]];
+  Object.keys(records).sort().forEach(function(date){
+    records[date].forEach(function(e,i){
+      rows.push([date,i+1,fmtFull(new Date(e.timestamp)),e.lap!=null?Math.floor(e.lap/1000):"",e.memo||""]);
+    });
+  });
+  var csv=rows.map(function(r){return r.map(function(v){return '"'+String(v).replace(/"/g,'""')+'"';}).join(",");}).join("\n");
+  var b=new Blob(["\uFEFF"+csv],{type:"text/csv;charset=utf-8;"});
+  dlBlob(b,"otsuji_"+dateKey(new Date())+".csv");
+}
+function dlBlob(blob,name){
+  var u=URL.createObjectURL(blob),a=document.createElement("a");
+  a.href=u; a.download=name; a.click(); URL.revokeObjectURL(u);
+}
+
+// ═══════════════════════════════════════════
+// トースト
+// ═══════════════════════════════════════════
+var _toastTimer=null;
+function showToast(msg){
+  var el=document.getElementById("toast");
+  el.style.background=th().ac; el.style.color="#fff";
+  el.textContent=msg; el.classList.add("show");
+  clearTimeout(_toastTimer);
+  _toastTimer=setTimeout(function(){ el.classList.remove("show"); },2500);
+}
+
+// ═══════════════════════════════════════════
+// 実績アニメーション
+// ═══════════════════════════════════════════
+var _achTimer=null;
+function showAchievement(emoji, line1, line2){
+  var el=document.getElementById("achievement");
+  el.innerHTML='<div class="ach-emoji">'+emoji+'</div><div class="ach-text">'+line1+'<br><span style="font-size:14px;opacity:.85">'+line2+'</span></div>';
+  el.classList.add("show");
+  clearTimeout(_achTimer);
+  _achTimer=setTimeout(function(){
+    el.classList.remove("show");
+    el.innerHTML="";
+  },2800);
+}
+
+// ═══════════════════════════════════════════
+// 確認モーダル
+// ═══════════════════════════════════════════
+function showConfirm(msg,onOk){
+  var t=th();
+  document.getElementById("modal-box").style.background=t.card;
+  document.getElementById("modal-msg").style.color=t.tx;
+  document.getElementById("modal-msg").textContent=msg;
+  document.getElementById("modal").classList.add("show");
+  document.getElementById("modal-ok").onclick=function(){
+    document.getElementById("modal").classList.remove("show"); onOk();
+  };
+  document.getElementById("modal-cancel").onclick=function(){
+    document.getElementById("modal").classList.remove("show");
+  };
+}
+
+// ═══════════════════════════════════════════
+// 編集モーダル
+// ═══════════════════════════════════════════
+var _editFeel="", _editHard="";
+
+function setFeel(val){
+  _editFeel=val;
+  var t=th();
+  var map={good:"#52B788",normal:"#888",bad:"#F06080"};
+  document.querySelectorAll("[data-feel]").forEach(function(b){
+    var active=b.dataset.feel===val;
+    b.style.borderColor=active?map[val]:"#ddd";
+    b.style.background=active?(map[val]+"22"):"transparent";
+  });
+}
+function setHard(val){
+  _editHard=val;
+  var t=th();
+  var map={soft:"#3B82F6",normal:"#92600A",hard:"#888"};
+  document.querySelectorAll("[data-hard]").forEach(function(b){
+    var active=b.dataset.hard===val;
+    b.style.borderColor=active?map[val]:"#ddd";
+    b.style.background=active?(map[val]+"22"):"transparent";
+  });
+}
+
+function openEdit(dk, idx){
+  var t=th();
+  var entry=records[dk][idx];
+  var d=new Date(entry.timestamp);
+  var box=document.getElementById("edit-box");
+  box.style.background=t.card;
+  document.getElementById("edit-title").style.color=t.ac;
+  document.getElementById("edit-time-label").style.color=t.sub;
+  document.getElementById("edit-feel-label").style.color=t.sub;
+  document.getElementById("edit-hard-label").style.color=t.sub;
+  document.getElementById("edit-memo-label").style.color=t.sub;
+  var timeEl=document.getElementById("edit-time");
+  timeEl.value=pad(d.getHours())+":"+pad(d.getMinutes());
+  timeEl.style.borderColor=t.bdr; timeEl.style.color=t.tx; timeEl.style.background=t.cbg;
+  var memoEl=document.getElementById("edit-memo");
+  memoEl.value=entry.memo||"";
+  memoEl.style.borderColor=t.bdr; memoEl.style.color=t.tx; memoEl.style.background=t.cbg;
+
+  // 気分・状態ボタンのスタイルリセット
+  document.querySelectorAll("[data-feel],[data-hard]").forEach(function(b){
+    b.style.borderColor="#ddd"; b.style.background="transparent";
+  });
+  _editFeel=entry.feel||""; _editHard=entry.hard||"";
+  if(_editFeel) setFeel(_editFeel);
+  if(_editHard) setHard(_editHard);
+
+  // ボタンクリック登録
+  document.querySelectorAll("[data-feel]").forEach(function(b){
+    b.onclick=function(){ setFeel(b.dataset.feel); };
+  });
+  document.querySelectorAll("[data-hard]").forEach(function(b){
+    b.onclick=function(){ setHard(b.dataset.hard); };
+  });
+
+  document.getElementById("edit-cancel").style.color=t.muted;
+  document.getElementById("edit-cancel").style.borderColor=t.bdr;
+  document.getElementById("edit-cancel").style.background="transparent";
+  document.getElementById("edit-save").style.background=t.ac;
+  document.getElementById("edit-modal").classList.add("show");
+
+  document.getElementById("edit-cancel").onclick=function(){
+    document.getElementById("edit-modal").classList.remove("show");
+  };
+  document.getElementById("edit-save").onclick=function(){
+    var timeParts=document.getElementById("edit-time").value.split(":");
+    if(timeParts.length<2){ return; }
+    var newD=new Date(entry.timestamp);
+    newD.setHours(parseInt(timeParts[0],10));
+    newD.setMinutes(parseInt(timeParts[1],10));
+    newD.setSeconds(0);
+    var newMemo=document.getElementById("edit-memo").value.trim();
+    var list=records[dk].slice();
+    list[idx]=Object.assign({},list[idx],{timestamp:newD.getTime(),memo:newMemo,feel:_editFeel,hard:_editHard});
+    list=list.map(function(e,i){
+      if(i===0) return Object.assign({},e,{lap:null});
+      return Object.assign({},e,{lap:e.timestamp-list[i-1].timestamp});
+    });
+    records=Object.assign({},records); records[dk]=list;
+    persist();
+    document.getElementById("edit-modal").classList.remove("show");
+    render();
+  };
+}
+
+// ═══════════════════════════════════════════
+// タイマー
+// ═══════════════════════════════════════════
+var _tick=null;
+function startTick(){
+  clearInterval(_tick);
+  _tick=setInterval(function(){
+    var el=document.getElementById("elapsed");
+    if(!el){ clearInterval(_tick); return; }
+    var lr=lastRecord();
+    if(lr) el.textContent=fmtElapsed(Date.now()-lr.timestamp);
+  },1000);
+}
+
+// ═══════════════════════════════════════════
+// アクション
+// ═══════════════════════════════════════════
+function addRecord(){
+  var now=new Date(), key=dateKey(now), prev=records[key]||[];
+  // 同日の前回 or 昨日以前の最後の記録から経過時間を計算
+  var prevEntry=prev.length?prev[prev.length-1]:lastRecord();
+  var prevTime=prevEntry?prevEntry.timestamp:null;
+  var lap=prevTime!=null?now.getTime()-prevTime:null;
+  // 自己ベスト・ワースト判定（記録前）
+  var prevBest=bestLap(), prevWorst=worstLap();
+  records=Object.assign({},records);
+  records[key]=prev.concat([{timestamp:now.getTime(),lap:lap,memo:""}]);
+  persist(); render();
+  var r=document.getElementById("ripple-ring");
+  if(r){ r.style.background=th().ac+"33"; r.classList.remove("go"); void r.offsetWidth; r.style.display="block"; r.classList.add("go"); setTimeout(function(){ r.classList.remove("go"); r.style.display="none"; },650); }
+  // アニメーション表示
+  if(lap!=null){
+    if(prevBest===null || lap<prevBest){
+      setTimeout(function(){ showAchievement("🏆","自己ベスト更新！",fmtDur(lap)); },300);
+    } else if(prevWorst===null || lap>prevWorst){
+      setTimeout(function(){ showAchievement("🦥","自己ワースト更新…",fmtDur(lap)); },300);
+    }
+  }
+}
+
+function deleteRecord(dk,idx){
+  showConfirm("\u3053\u306e\u8a18\u9332\u3092\u524a\u9664\u3057\u307e\u3059\u304b\uff1f",function(){
+    var list=(records[dk]||[]).slice();
+    list.splice(idx,1);
+    records=Object.assign({},records);
+    records[dk]=list.map(function(e,i){
+      if(i===0) return Object.assign({},e,{lap:null});
+      return Object.assign({},e,{lap:e.timestamp-list[i-1].timestamp});
+    });
+    persist(); render();
+  });
+}
+
+function resetData(){
+  showConfirm("\u3059\u3079\u3066\u306e\u8a18\u9332\u3092\u524a\u9664\u3057\u307e\u3059\u3002\n\u3053\u306e\u64cd\u4f5c\u306f\u5143\u306b\u623b\u305b\u307e\u305b\u3093\u3002\n\n\u672c\u5f53\u306b\u524a\u9664\u3057\u307e\u3059\u304b\uff1f",function(){
+    records={}; showData=false; persist(); showToast("\uD83D\uDDD1 \u30C7\u30FC\u30BF\u3092\u524a\u9664\u3057\u307e\u3057\u305F"); render();
+  });
+}
+
+function handleImport(e){
+  var file=e.target.files[0]; if(!file) return;
+  var reader=new FileReader();
+  reader.onload=function(ev){
+    try{
+      var parsed=JSON.parse(ev.target.result);
+      if(typeof parsed!=="object"||Array.isArray(parsed)) throw new Error();
+      Object.keys(parsed).forEach(function(k){ if(Array.isArray(parsed[k])) records[k]=parsed[k]; });
+      persist(); showData=false;
+      showToast("\u2705 \u30A4\u30F3\u30DD\u30FC\u30C8\u5B8C\u4E86\uFF08"+Object.keys(parsed).length+"\u65E5\u5206\uFF09");
+      render();
+    }catch(err){ alert("\u8AAD\u307F\u8FBC\u307F\u5931\u6557"); }
+  };
+  reader.readAsText(file); e.target.value="";
+}
+
+function setView(v){ view=v; detailDate=null; showTheme=false; showData=false; render(); }
+function openDetail(k){ detailDate=(k===null||detailDate===k)?null:k; render(); }
+function goCalendar(){ view="calendar"; detailDate=null; render(); }
+function prevMonth(){ if(calMonth===0){calMonth=11;calYear--;}else calMonth--; render(); }
+function nextMonth(){ if(calMonth===11){calMonth=0;calYear++;}else calMonth++; render(); }
+function setTheme(k){ themeKey=k; showTheme=false; persist(); render(); }
+function toggleTheme(){ showTheme=!showTheme; showData=false; render(); }
+function toggleData(){ showData=!showData; showTheme=false; render(); }
+function setStatsMode(m){ statsMode=m; render(); }
+function setLapMode(m){ lapMode=m; render(); }
+function setCalFilter(f){ calFilter=(calFilter===f?"":f); render(); }
+
+// ═══════════════════════════════════════════
+// 統計データ計算
+// ═══════════════════════════════════════════
+// ── ストリーク（連続記録日数）
+function calcStreak(){
+  var today=new Date(), streak=0;
+  for(var i=0;i<9999;i++){
+    var d=new Date(today); d.setDate(today.getDate()-i);
+    var k=dateKey(d);
+    if((records[k]||[]).length>0){ streak++; } else { break; }
+  }
+  return streak;
+}
+
+// ── 時間帯分布（0-23時）
+function getHourDist(days){
+  var dist=new Array(24).fill(0);
+  var today=new Date();
+  for(var i=0;i<days;i++){
+    var d=new Date(today); d.setDate(today.getDate()-i);
+    var k=dateKey(d);
+    (records[k]||[]).forEach(function(e){
+      var h=new Date(e.timestamp).getHours();
+      dist[h]++;
+    });
+  }
+  return dist;
+}
+
+// ── ストリーク演出
+function streakLabel(n){
+  if(n===0)  return {en:"— No Record —",            label:"記録なし",            sub:"今日から始めよう",   color:"#aaa",   rank:0};
+  if(n===1)  return {en:"Unko Combo Debut",          label:"1 ウンコンボ！",      sub:"いいスタート",       color:"#7EB8C9",rank:1};
+  if(n<=4)   return {en:"Unko Combo Spark",         label:n+" ウンコンボ！",     sub:"調子が上がってきた", color:"#5A9EB5",rank:2};
+  if(n<=9)   return {en:"Unko Combo Cyclone",         label:n+" ウンコンボ！！",   sub:"一週間継続中",       color:"#7B68C8",rank:3};
+  if(n<=14)  return {en:"Unko Combo Master",          label:n+" ウンコンボ！！！", sub:"本物のルーティン",   color:"#C0697A",rank:4};
+  if(n<=20)  return {en:"UNKO COMBO ROYAL",         label:n+" ウンコンボ！！！", sub:"習慣の達人",         color:"#C0854A",rank:5};
+  if(n<=30)  return {en:"UNKO COMBO LEGENDARY",         label:n+" ウンコンボ！！！", sub:"もはや習慣の域",     color:"#B5803A",rank:6};
+  return      {en:"UNKO COMBO GOLDEN",               label:n+" ウンコンボ！！！", sub:"伝説のゴールドコンボ",color:"#C8A830",rank:7};
+}
+
+function getWeekData(){
+  var result=[];
+  var today=new Date();
+  for(var i=6;i>=0;i--){
+    var d=new Date(today); d.setDate(today.getDate()-i);
+    var k=dateKey(d);
+    var cnt=(records[k]||[]).length;
+    result.push({label:(d.getMonth()+1)+"/"+d.getDate(),count:cnt,key:k});
+  }
+  return result;
+}
+function getMonthData(){
+  var result=[];
+  var today=new Date();
+  for(var i=3;i>=0;i--){
+    var y=today.getFullYear(), mo=today.getMonth()-i;
+    while(mo<0){mo+=12;y--;}
+    var total=0, laps=[];
+    var dim=daysInMonth(y,mo);
+    for(var d=1;d<=dim;d++){
+      var key=y+"-"+pad(mo+1)+"-"+pad(d);
+      var list=records[key]||[];
+      total+=list.length;
+      list.forEach(function(e){ if(e.lap!=null) laps.push(e.lap); });
+    }
+    var days=i===0?today.getDate():dim;
+    var mBest=laps.length?Math.min.apply(null,laps):null;
+    var mWorst=laps.length?Math.max.apply(null,laps):null;
+    result.push({label:(mo+1)+"月",count:total,avg:(days>0?(total/days).toFixed(1):0),best:mBest,worst:mWorst});
+  }
+  return result;
+}
+
+// ═══════════════════════════════════════════
+// レンダリング
+// ═══════════════════════════════════════════
+function render(){
+  var t=th(), today=new Date(), tl=todayList(), av=avgLap();
+  var totalDays=Object.keys(records).length;
+  var totalRec=Object.values(records).reduce(function(s,l){return s+l.length;},0);
+  document.body.style.background=t.bg;
+
+  var html="";
+
+  // ── ヘッダー
+  html+='<div style="background:'+t.header+';color:'+t.hText+';padding:calc(14px + env(safe-area-inset-top)) 20px 14px;display:flex;align-items:center;justify-content:space-between">';
+  html+='<div style="font-size:15px;font-weight:700;letter-spacing:.03em;display:flex;align-items:center;gap:6px;white-space:nowrap"><span style="font-size:17px">&#127807;</span>お通じ記録</div>';
+  html+='<div style="display:flex;gap:6px;align-items:center">';
+  html+='<button onclick="toggleTheme()" style="background:rgba(255,255,255,.18);border:none;border-radius:8px;padding:6px 8px;color:'+t.hText+';font-size:16px;line-height:1">&#127912;</button>';
+  html+='<button onclick="toggleData()" style="background:rgba(255,255,255,.18);border:none;border-radius:8px;padding:6px 8px;color:'+t.hText+';font-size:16px;line-height:1">&#128190;</button>';
+  html+='</div></div>';
+
+  // ── タブバー
+  var tabs=[["today","&#128221;","記録"],["calendar","&#128197;","カレンダー"],["stats","&#128200;","統計"]];
+  html+='<div style="background:'+t.header+';padding:0 16px 10px;display:flex;gap:6px">';
+  tabs.forEach(function(item){
+    var active=view===item[0]||(item[0]==="calendar"&&view==="detail");
+    html+='<button onclick="setView(\''+item[0]+'\')" style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;padding:8px 4px;border:none;border-radius:12px;background:'+(active?"rgba(255,255,255,.22)":"transparent")+';color:'+t.hText+';transition:background .15s">';
+    html+='<span style="font-size:18px;line-height:1">'+item[1]+'</span>';
+    html+='<span style="font-size:11px;font-weight:'+(active?700:500)+';opacity:'+(active?1:.75)+'">'+item[2]+'</span>';
+    html+='</button>';
+  });
+  html+='</div>';
+
+  // ── テーマパネル
+  if(showTheme){
+    html+='<div style="background:'+t.card+';border-bottom:1px solid '+t.bdr+';padding:14px 16px">';
+    html+='<div style="font-size:11px;color:'+t.sub+';font-weight:600;margin-bottom:8px">ライトモード</div>';
+    html+='<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">';
+    ["green","sky","rose","amber"].forEach(function(k){
+      var th2=THEMES[k],active=themeKey===k;
+      html+='<button onclick="setTheme(\''+k+'\')" style="padding:5px 12px;border-radius:20px;font-size:12px;font-weight:600;border:2px solid '+(active?th2.ac:"transparent")+';background:'+th2.bg+';color:'+th2.ac+'">'+th2.label+'</button>';
+    });
+    html+='</div><div style="font-size:11px;color:'+t.sub+';font-weight:600;margin-bottom:8px">ダークモード</div>';
+    html+='<div style="display:flex;gap:8px;flex-wrap:wrap">';
+    ["darkGreen","darkBlue","darkRose","darkAmber"].forEach(function(k){
+      var th2=THEMES[k],active=themeKey===k;
+      html+='<button onclick="setTheme(\''+k+'\')" style="padding:5px 12px;border-radius:20px;font-size:12px;font-weight:600;border:2px solid '+(active?th2.ac:th2.bdr)+';background:'+th2.card+';color:'+th2.ac+'">'+th2.label+'</button>';
+    });
+    html+='</div></div>';
+  }
+
+  // ── データパネル
+  if(showData){
+    html+='<div style="background:'+t.card+';border-bottom:1px solid '+t.bdr+';padding:16px">';
+    html+='<div style="display:flex;gap:10px;margin-bottom:16px">';
+    [["総記録数",totalRec+"\u56DE"],["記録日数",totalDays+"\u65E5"],["平均ラップ",av?fmtDur(av):"\u2014"]].forEach(function(item){
+      html+='<div style="flex:1;background:'+t.eBg+';border-radius:10px;padding:10px 8px;text-align:center"><div style="font-size:15px;font-weight:800;color:'+t.ac+'">'+item[1]+'</div><div style="font-size:10px;color:'+t.sub+';margin-top:2px">'+item[0]+'</div></div>';
+    });
+    html+='</div>';
+    html+='<div style="font-size:11px;color:'+t.sub+';font-weight:600;margin-bottom:8px">書き出し</div>';
+    html+='<div style="display:flex;gap:8px;margin-bottom:16px">';
+    html+='<button onclick="exportJSON();showToast(\'JSON\u3092\u66F8\u304D\u51FA\u3057\u307E\u3057\u305F\')" style="flex:1;padding:10px 0;border-radius:10px;border:1.5px solid '+t.ac+';background:transparent;color:'+t.ac+';font-weight:700;font-size:13px">JSON\u5F62\u5F0F</button>';
+    html+='<button onclick="exportCSV();showToast(\'CSV\u3092\u66F8\u304D\u51FA\u3057\u307E\u3057\u305F\')" style="flex:1;padding:10px 0;border-radius:10px;border:none;background:'+t.ac+';color:#fff;font-weight:700;font-size:13px">CSV\u5F62\u5F0F</button>';
+    html+='</div>';
+    html+='<div style="font-size:11px;color:'+t.sub+';font-weight:600;margin-bottom:8px">読み込み（JSONのみ）</div>';
+    html+='<input type="file" id="imp" accept=".json" style="display:none" onchange="handleImport(event)">';
+    html+='<button onclick="document.getElementById(\'imp\').click()" style="width:100%;padding:10px 0;border-radius:10px;border:1.5px dashed '+t.sub+';background:transparent;color:'+t.sub+';font-weight:600;font-size:13px">&#128194; JSON\u30D5\u30A1\u30A4\u30EB\u3092\u8AAD\u307F\u8FBC\u3080</button>';
+    html+='<div style="margin-top:14px;padding-top:14px;border-top:1px solid '+t.bdr+'">';
+    html+='<button onclick="resetData()" style="width:100%;padding:9px 0;border-radius:10px;border:1.5px solid #E07070;background:transparent;color:#E07070;font-weight:600;font-size:12px">&#9888;&#65039; \u3059\u3079\u3066\u306E\u8A18\u9332\u3092\u524A\u9664</button>';
+    html+='</div></div>';
+  }
+
+  // ── 今日ビュー
+  if(view==="today"){
+    var lr=lastRecord(); var elapsed=lr?fmtElapsed(Date.now()-lr.timestamp):"";
+    html+='<div style="flex:1;padding:24px 20px;display:flex;flex-direction:column;gap:20px">';
+    html+='<div style="text-align:center;color:'+t.ac+';font-size:15px;font-weight:600">'+today.toLocaleDateString("ja-JP",{year:"numeric",month:"long",day:"numeric",weekday:"short"})+'</div>';
+    html+='<div style="background:'+t.card+';border-radius:20px;padding:20px;text-align:center;box-shadow:0 2px 12px '+t.sh+'">';
+    html+='<div style="font-size:64px;font-weight:800;color:'+t.ac+';line-height:1">'+tl.length+'</div>';
+    html+='<div style="color:'+t.sub+';font-size:14px;margin-top:4px">今日の回数</div>';
+    if(lr){
+      html+='<div style="margin-top:16px;padding:10px 16px;background:'+t.eBg+';border-radius:12px">';
+      html+='<div style="font-size:11px;color:'+t.sub+';margin-bottom:4px">前回からの経過時間（時:分:秒）</div>';
+      html+='<div id="elapsed" style="font-size:22px;font-weight:700;color:'+t.ac+';font-variant-numeric:tabular-nums">'+elapsed+'</div>';
+      html+='</div>';
+    }
+    if(av){ html+='<div style="margin-top:10px;font-size:13px;color:'+t.muted+'">平均ラップ：<span style="color:'+t.ac+';font-weight:700">'+fmtDur(av)+'</span></div>'; }
+    html+='</div>';
+    html+='<div style="display:flex;justify-content:center"><div style="position:relative">';
+    html+='<div id="ripple-ring" style="background:'+t.ac+'33"></div>';
+    html+='<button id="add-btn" style="width:88px;height:88px;border-radius:50%;background:linear-gradient(135deg,'+t.ac2+','+t.ac+');color:#fff;font-size:0;border:none;box-shadow:0 6px 24px '+t.ac+'55;display:flex;align-items:center;justify-content:center;padding:0"><span style="font-size:44px;font-weight:300;line-height:1;display:block;margin-top:-5px">+</span></button>';
+    html+='</div></div>';
+    if(tl.length>0){
+      html+='<div style="background:'+t.card+';border-radius:16px;overflow:hidden;box-shadow:0 2px 12px '+t.sh+'">';
+      html+='<div style="padding:12px 16px 8px;font-size:12px;color:'+t.sub+';font-weight:600;letter-spacing:.05em;border-bottom:1px solid '+t.bdr+'">今日の記録</div>';
+      var rev=tl.slice().reverse();
+      for(var ri=0;ri<rev.length;ri++){
+        var e=rev[ri], idx=tl.length-1-ri, d=new Date(e.timestamp);
+        var bdr2=ri<rev.length-1?"1px solid "+t.bdr:"none";
+        html+='<div style="padding:12px 16px;border-bottom:'+bdr2+'">';
+        html+='<div style="display:flex;align-items:center;gap:12px">';
+        html+='<div style="width:28px;height:28px;border-radius:50%;background:'+t.cbg+';color:'+t.ac+';display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex-shrink:0">'+(idx+1)+'</div>';
+        html+='<div style="flex:1"><div style="font-size:16px;font-weight:600;color:'+t.tx+'">'+fmtTime(d)+'</div>';
+        if(e.lap!=null) html+='<div style="font-size:12px;color:'+t.sub+';margin-top:1px">前回から '+fmtDur(e.lap)+'</div>';
+        if(e.feel||e.hard) html+='<div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:5px">'+feelBadge(e.feel)+hardBadge(e.hard)+'</div>';
+        html+='</div>';
+        html+='<div style="display:flex;gap:6px;flex-shrink:0">';
+        html+='<button data-edit-dk="'+todayKey()+'" data-edit-idx="'+idx+'" style="background:'+t.cbg+';border:none;border-radius:8px;color:'+t.ac+';font-size:11px;font-weight:700;padding:5px 10px">&#9998; 編集</button>';
+        html+='<button data-del-dk="'+todayKey()+'" data-del-idx="'+idx+'" style="background:#FEE2E2;border:none;border-radius:8px;color:#E07070;font-size:11px;font-weight:700;padding:5px 10px">&#128465; 削除</button>';
+        html+='</div>';
+        html+='</div>';
+        if(e.memo) html+='<div style="margin-top:6px;margin-left:40px;font-size:12px;color:'+t.muted+';background:'+t.eBg+';border-radius:8px;padding:6px 10px">'+e.memo+'</div>';
+        html+='</div>';
+      }
+      html+='</div>';
+    } else {
+      html+='<div style="text-align:center;color:'+t.sub+';font-size:14px;padding-top:8px">+ボタンを押して記録しましょう</div>';
+    }
+    html+='</div>';
+  }
+
+  // ── カレンダービュー
+  if(view==="calendar"){
+    var dim=daysInMonth(calYear,calMonth), fd=firstDow(calYear,calMonth);
+    html+='<div style="flex:1;padding:20px">';
+    html+='<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">';
+    html+='<button onclick="prevMonth()" style="background:'+t.nav+';border:none;border-radius:8px;width:36px;height:36px;font-size:20px;color:'+t.ac+'">&#8249;</button>';
+    html+='<div style="font-weight:700;font-size:17px;color:'+t.ac+'">'+calYear+'年 '+(calMonth+1)+'月</div>';
+    html+='<button onclick="nextMonth()" style="background:'+t.nav+';border:none;border-radius:8px;width:36px;height:36px;font-size:20px;color:'+t.ac+'">&#8250;</button>';
+    html+='</div>';
+
+    html+='<div class="cal-grid" style="margin-bottom:4px">';
+    ["\u65E5","\u6708","\u706B","\u6C34","\u6728","\u91D1","\u571F"].forEach(function(w,i){
+      html+='<div style="text-align:center;font-size:11px;font-weight:600;color:'+(i===0?"#E07070":i===6?"#7090E0":t.muted)+';padding-bottom:4px">'+w+'</div>';
+    });
+    html+='</div><div class="cal-grid">';
+    for(var i2=0;i2<fd;i2++) html+='<div></div>';
+    for(var d2=1;d2<=dim;d2++){
+      var cnt=getCount(calYear,calMonth,d2);
+      var isToday=today.getFullYear()===calYear&&today.getMonth()===calMonth&&today.getDate()===d2;
+      var k2=calYear+"-"+pad(calMonth+1)+"-"+pad(d2);
+      var hasFilter=calFilter?dayHasFilter(k2):false;
+      var fColorMap={"good":"#52B788","normal":"#888","bad":"#F06080","soft":"#3B82F6","hardNormal":"#92600A","hard":"#666"};
+      var fColor=fColorMap[calFilter]||t.ac;
+      html+='<button class="cal-cell" onclick="openDetail(\''+k2+'\')" style="background:'+(hasFilter?fColor+"33":countBg(cnt))+';border-color:'+(isToday?t.ac:(hasFilter?fColor:"transparent"))+';box-shadow:0 1px 4px '+t.sh+(hasFilter?";ring:2px solid "+fColor:"")+'">';
+      html+='<span style="font-size:13px;font-weight:'+(isToday?700:500)+';color:'+(cnt>=3?"#fff":t.cTx)+'">'+d2+'</span>';
+      if(cnt>0) html+='<span style="font-size:10px;font-weight:700;color:'+(cnt>=3?"#fff":t.cTx)+'">'+cnt+'\u56DE</span>';
+      html+='</button>';
+    }
+    html+='</div>';
+    // フィルターボタン（気分1行・状態1行）
+    html+='<div style="display:flex;flex-direction:column;gap:6px;margin-top:16px">';
+    html+='<div style="display:flex;gap:5px">';
+    [["good","😊 スッキリ！","#52B788"],["normal","😐 ふつう","#888"],["bad","😩 うーん…","#F06080"]].forEach(function(item){
+      var active=calFilter===item[0];
+      html+='<button onclick="setCalFilter(\''+item[0]+'\')" style="flex:1;font-size:11px;padding:5px 0;border-radius:20px;border:1.5px solid '+(active?item[2]:t.bdr)+';background:'+(active?item[2]+"22":t.card)+';color:'+(active?item[2]:t.sub)+';font-weight:'+(active?700:500)+';cursor:pointer;text-align:center">'+item[1]+'</button>';
+    });
+    html+='</div>';
+    html+='<div style="display:flex;gap:5px">';
+    [["soft","💧 ユルイ","#3B82F6"],["hardNormal","🟤 ふつう","#92600A"],["hard","🪨 カタイ","#666"]].forEach(function(item){
+      var active=calFilter===item[0];
+      html+='<button onclick="setCalFilter(\''+item[0]+'\')" style="flex:1;font-size:11px;padding:5px 0;border-radius:20px;border:1.5px solid '+(active?item[2]:t.bdr)+';background:'+(active?item[2]+"22":t.card)+';color:'+(active?item[2]:t.sub)+';font-weight:'+(active?700:500)+';cursor:pointer;text-align:center">'+item[1]+'</button>';
+    });
+    html+='</div>';
+    html+='</div>';
+
+    // インライン詳細パネル
+    if(detailDate){
+      var list2=records[detailDate]||[];
+      var dayLaps=list2.map(function(e){return e.lap;}).filter(function(l){return l!=null;});
+      var da=dayLaps.length?Math.round(dayLaps.reduce(function(a,b){return a+b;},0)/dayLaps.length):null;
+
+      // ヘッダー
+      html+='<div style="margin:24px 16px 20px;border-radius:20px;overflow:hidden;background:'+t.card+';box-shadow:0 4px 20px '+t.sh+'">';
+      html+='<div style="padding:14px 16px 12px;background:'+t.header+';display:flex;align-items:center;justify-content:space-between">';
+      html+='<div>';
+      html+='<div style="font-size:18px;font-weight:800;color:'+t.hText+'">'+detailDate.replace(/-/g,"/")+'</div>';
+      html+='<div style="font-size:12px;color:'+t.hText+';opacity:.75;margin-top:2px">'+(new Date(detailDate).toLocaleDateString("ja-JP",{weekday:"long"}))+'</div>';
+      html+='</div>';
+      html+='<button onclick="openDetail(null)" style="background:rgba(255,255,255,.2);border:none;border-radius:50%;width:32px;height:32px;color:'+t.hText+';font-size:18px;line-height:1;display:flex;align-items:center;justify-content:center">&#215;</button>';
+      html+='</div>';
+      html+='<div style="display:flex;border-bottom:1px solid '+t.bdr+'">';
+      html+='<div style="flex:1;padding:16px 0;text-align:center;border-right:1px solid '+t.bdr+'">';
+      html+='<div style="font-size:36px;font-weight:800;color:'+t.ac+';line-height:1">'+list2.length+'</div>';
+      html+='<div style="font-size:11px;color:'+t.sub+';margin-top:5px">回数</div>';
+      html+='</div>';
+      if(da){
+        html+='<div style="flex:1;padding:16px 0;text-align:center">';
+        html+='<div style="font-size:20px;font-weight:800;color:'+t.ac2+';line-height:1">'+fmtDur(da)+'</div>';
+        html+='<div style="font-size:11px;color:'+t.sub+';margin-top:5px">平均ラップ</div>';
+        html+='</div>';
+      }
+      html+='</div>';
+      // 記録リスト
+      if(list2.length===0){
+        html+='<div style="padding:28px;text-align:center;color:'+t.sub+';font-size:14px">記録がありません</div>';
+      } else {
+        for(var i3=0;i3<list2.length;i3++){
+          var e3=list2[i3], d4=new Date(e3.timestamp);
+          html+='<div style="padding:14px 18px;border-bottom:'+(i3<list2.length-1?"1px solid "+t.bdr:"none")+'">';
+          html+='<div style="display:flex;align-items:center;gap:12px">';
+          // 番号バッジ
+          html+='<div style="width:32px;height:32px;border-radius:50%;background:'+t.ac+';color:#fff;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:800;flex-shrink:0">'+(i3+1)+'</div>';
+          // 時刻・ラップ
+          html+='<div style="flex:1">';
+          html+='<div style="font-size:20px;font-weight:700;color:'+t.tx+'">'+fmtTime(d4)+'</div>';
+          if(e3.lap!=null) html+='<div style="font-size:12px;color:'+t.sub+';margin-top:2px">前回から '+fmtDur(e3.lap)+'</div>';
+          if(e3.feel||e3.hard) html+='<div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:5px">'+feelBadge(e3.feel)+hardBadge(e3.hard)+'</div>';
+          html+='</div>';
+          // ボタン
+          html+='<div style="display:flex;flex-direction:column;gap:6px;flex-shrink:0">';
+          html+='<button data-edit-dk="'+detailDate+'" data-edit-idx="'+i3+'" style="background:'+t.cbg+';border:none;border-radius:8px;color:'+t.ac+';font-size:12px;font-weight:700;padding:6px 12px;white-space:nowrap">✏️ 編集</button>';
+          html+='<button data-del-dk="'+detailDate+'" data-del-idx="'+i3+'" style="background:#FEE2E2;border:none;border-radius:8px;color:#E07070;font-size:12px;font-weight:700;padding:6px 12px;white-space:nowrap">🗑 削除</button>';
+          html+='</div>';
+          html+='</div>';
+          // メモ
+          if(e3.memo) html+='<div style="margin-top:8px;margin-left:44px;font-size:13px;color:'+t.muted+';background:'+t.eBg+';border-radius:8px;padding:8px 12px;line-height:1.5">'+e3.memo+'</div>';
+          html+='</div>';
+        }
+      }
+      html+='</div>';
+    }
+    html+='</div>';
+  }
+
+  // ── 統計ビュー
+  if(view==="stats"){
+    var bLap=bestLap(), wLap=worstLap(), av2=avgLap(), med2=medianLap();
+    var displayLap=lapMode==="median"?med2:av2;
+    var ratios=calcRatios();
+    // 今月のベスト・ワースト
+    var today2=new Date(), cy=today2.getFullYear(), cmo=today2.getMonth();
+    var cLaps=[];
+    for(var cd=1;cd<=daysInMonth(cy,cmo);cd++){
+      var cKey=cy+"-"+pad(cmo+1)+"-"+pad(cd);
+      (records[cKey]||[]).forEach(function(e){ if(e.lap!=null) cLaps.push(e.lap); });
+    }
+    var cBest=cLaps.length?Math.min.apply(null,cLaps):null;
+    var cWorst=cLaps.length?Math.max.apply(null,cLaps):null;
+
+    var streak=calcStreak(), sl=streakLabel(streak);
+    html+='<div style="flex:1;padding:20px;display:flex;flex-direction:column;gap:16px">';
+
+    // ── ストリークカード
+    // 数字部分とコンボ部分を分離
+    html+='<div style="border-radius:20px;overflow:hidden;box-shadow:0 6px 24px '+t.sh+'">';
+    html+='<div style="padding:22px 24px 20px;background:'+(streak>0?'linear-gradient(135deg,'+sl.color+'f0 0%,'+sl.color+'88 100%)':t.cbg)+';position:relative;overflow:hidden">';
+    // 背景透かし：英語テキスト
+    html+='<div style="position:absolute;right:16px;bottom:16px;font-size:28px;font-weight:900;color:rgba(255,255,255,.15);line-height:1;letter-spacing:.1em;text-transform:uppercase;font-style:italic;pointer-events:none;user-select:none;white-space:nowrap">'+(sl.en||"")+'</div>';
+    // ラベル上部
+    html+='<div style="font-size:10px;font-weight:700;color:rgba(255,255,255,.6);letter-spacing:.18em;text-transform:uppercase;margin-bottom:10px">Daily Streak</div>';
+    if(streak>0){
+      html+='<div style="display:flex;align-items:baseline;gap:8px;margin-bottom:6px">';
+      html+='<span style="font-size:54px;font-weight:900;color:#fff;line-height:1;letter-spacing:-.02em;font-variant-numeric:tabular-nums">'+streak+'</span>';
+      html+='<span style="font-size:20px;font-weight:900;color:#fff;letter-spacing:.01em">ウンコンボ！</span>';
+      html+='</div>';
+    } else {
+      html+='<div style="font-size:36px;font-weight:900;color:'+t.sub+';margin-bottom:6px;letter-spacing:.02em">記録なし</div>';
+      html+='<div style="font-size:12px;color:'+t.sub+';letter-spacing:.06em">今日記録するとコンボスタート</div>';
+    }
+    html+='<div style="font-size:12px;color:rgba(255,255,255,.72);letter-spacing:.05em">'+sl.sub+'</div>';
+    html+='</div>';
+    // フッター
+    html+='<div style="padding:11px 24px;background:'+t.card+';display:flex;align-items:center;justify-content:space-between">';
+    if(streak>0){
+      html+='<span style="font-size:12px;color:'+t.sub+'">連続 <span style="font-weight:800;color:'+sl.color+'">'+streak+'</span> 日記録中</span>';
+      // ミニプログレスバー（次のランクまで）
+      var targets=[0,1,3,7,14,30,Infinity];
+      var nextTarget=targets.filter(function(v){return v>streak;})[0];
+      var prevTarget=targets[targets.indexOf(nextTarget)-1]||0;
+      var pct=nextTarget===Infinity?100:Math.round(((streak-prevTarget)/(nextTarget-prevTarget))*100);
+      html+='<div style="display:flex;align-items:center;gap:8px">';
+      html+='<div style="width:80px;height:4px;background:'+t.bdr+';border-radius:2px;overflow:hidden">';
+      html+='<div style="width:'+pct+'%;height:100%;background:'+sl.color+';border-radius:2px;transition:width .4s"></div>';
+      html+='</div>';
+      if(nextTarget!==Infinity) html+='<span style="font-size:10px;color:'+t.muted+'">次 '+nextTarget+'日</span>';
+      else html+='<span style="font-size:10px;color:'+sl.color+';font-weight:700">MAX</span>';
+      html+='</div>';
+    } else {
+
+    }
+    html+='</div>';
+    html+='</div>';
+
+    // ── 総合記録カード
+    html+='<div style="background:'+t.card+';border-radius:16px;overflow:hidden;box-shadow:0 2px 12px '+t.sh+'">';
+    html+='<div style="padding:11px 16px;background:'+t.header+';display:flex;align-items:center;gap:6px">';
+    html+='<span style="font-size:14px">🌍</span>';
+    html+='<span style="font-size:13px;font-weight:700;color:'+t.hText+'">総合記録</span>';
+    html+='</div>';
+    html+='<div style="display:flex">';
+    html+='<div style="flex:1;padding:16px 12px;text-align:center;border-right:1px solid '+t.bdr+'">';
+    html+='<div style="font-size:20px;margin-bottom:6px">🏆</div>';
+    html+='<div style="font-size:18px;font-weight:800;color:#52B788">'+(bLap!=null?fmtDur(bLap):"—")+'</div>';
+    html+='<div style="font-size:10px;color:'+t.sub+';margin-top:4px">総合ベスト</div>';
+    html+='</div>';
+    html+='<div style="flex:1;padding:16px 12px;text-align:center;border-right:1px solid '+t.bdr+'">';
+    html+='<div style="font-size:20px;margin-bottom:6px">🦥</div>';
+    html+='<div style="font-size:18px;font-weight:800;color:#F06080">'+(wLap!=null?fmtDur(wLap):"—")+'</div>';
+    html+='<div style="font-size:10px;color:'+t.sub+';margin-top:4px">総合ワースト</div>';
+    html+='</div>';
+    html+='<div style="flex:1;padding:16px 12px;text-align:center">';
+    html+='<div style="font-size:20px;margin-bottom:6px">📊</div>';
+    html+='<div style="font-size:18px;font-weight:800;color:'+t.ac+'">'+(displayLap?fmtDur(displayLap):"—")+'</div>';
+    html+='<div style="display:flex;gap:4px;justify-content:center;margin-top:6px">';
+    html+='<button onclick="setLapMode(\'avg\')" style="font-size:9px;padding:2px 6px;border-radius:10px;border:none;background:'+(lapMode==="avg"?t.ac:t.cbg)+';color:'+(lapMode==="avg"?"#fff":t.sub)+';font-weight:700;cursor:pointer">平均</button>';
+    html+='<button onclick="setLapMode(\'median\')" style="font-size:9px;padding:2px 6px;border-radius:10px;border:none;background:'+(lapMode==="median"?t.ac:t.cbg)+';color:'+(lapMode==="median"?"#fff":t.sub)+';font-weight:700;cursor:pointer">中央値</button>';
+    html+='</div>';
+    html+='</div>';
+    html+='</div></div>';
+
+    // ── 今月記録カード
+    html+='<div style="background:'+t.card+';border-radius:16px;overflow:hidden;box-shadow:0 2px 12px '+t.sh+'">';
+    html+='<div style="padding:11px 16px;background:'+t.ac+';display:flex;align-items:center;gap:6px">';
+    html+='<span style="font-size:14px">📅</span>';
+    html+='<span style="font-size:13px;font-weight:700;color:#fff">今月の記録（'+(cmo+1)+'月）</span>';
+    html+='</div>';
+    html+='<div style="display:flex">';
+    html+='<div style="flex:1;padding:16px 12px;text-align:center;border-right:1px solid '+t.bdr+'">';
+    html+='<div style="font-size:20px;margin-bottom:6px">🥇</div>';
+    html+='<div style="font-size:18px;font-weight:800;color:#52B788">'+(cBest!=null?fmtDur(cBest):"—")+'</div>';
+    html+='<div style="font-size:10px;color:'+t.sub+';margin-top:4px">月間ベスト</div>';
+    html+='</div>';
+    html+='<div style="flex:1;padding:16px 12px;text-align:center">';
+    html+='<div style="font-size:20px;margin-bottom:6px">🥴</div>';
+    html+='<div style="font-size:18px;font-weight:800;color:#F06080">'+(cWorst!=null?fmtDur(cWorst):"—")+'</div>';
+    html+='<div style="font-size:10px;color:'+t.sub+';margin-top:4px">月間ワースト</div>';
+    html+='</div>';
+    html+='</div></div>';
+    // ── 気分・状態割合カード
+    if(ratios.feelTotal>0||ratios.hardTotal>0){
+      html+='<div style="background:'+t.card+';border-radius:16px;overflow:hidden;box-shadow:0 2px 12px '+t.sh+'">';
+      html+='<div style="padding:12px 16px;border-bottom:1px solid '+t.bdr+';font-size:13px;font-weight:700;color:'+t.ac+'">気分・状態の割合</div>';
+      html+='<div style="padding:12px 16px;display:flex;flex-direction:column;gap:10px">';
+      if(ratios.feelTotal>0){
+        html+='<div>';
+        html+='<div style="font-size:11px;color:'+t.sub+';margin-bottom:6px;font-weight:600">気分</div>';
+        html+='<div style="display:flex;gap:3px;height:8px;border-radius:4px;overflow:hidden;margin-bottom:4px">';
+        [["good","#52B788"],["normal","#888"],["bad","#F06080"]].forEach(function(item){
+          var pct=Math.round((ratios.feel[item[0]]||0)/ratios.feelTotal*100);
+          if(pct>0) html+='<div style="flex:'+pct+';background:'+item[1]+'"></div>';
+        });
+        html+='</div>';
+        html+='<div style="display:flex;gap:8px">';
+        [["good","😊","スッキリ！","#52B788"],["normal","😐","ふつう","#888"],["bad","😩","うーん…","#F06080"]].forEach(function(item){
+          var cnt=ratios.feel[item[0]]||0, pct=Math.round(cnt/ratios.feelTotal*100);
+          html+='<div style="flex:1;text-align:center"><div style="font-size:13px">'+item[1]+'</div><div style="font-size:11px;font-weight:700;color:'+item[3]+'">'+pct+'%</div><div style="font-size:10px;color:'+t.muted+'">'+cnt+'回</div></div>';
+        });
+        html+='</div></div>';
+      }
+      if(ratios.hardTotal>0){
+        html+='<div>';
+        html+='<div style="font-size:11px;color:'+t.sub+';margin-bottom:6px;font-weight:600">状態</div>';
+        html+='<div style="display:flex;gap:3px;height:8px;border-radius:4px;overflow:hidden;margin-bottom:4px">';
+        [["soft","#3B82F6"],["normal","#92600A"],["hard","#888"]].forEach(function(item){
+          var pct=Math.round((ratios.hard[item[0]]||0)/ratios.hardTotal*100);
+          if(pct>0) html+='<div style="flex:'+pct+';background:'+item[1]+'"></div>';
+        });
+        html+='</div>';
+        html+='<div style="display:flex;gap:8px">';
+        [["soft","💧","ユルイ","#3B82F6"],["normal","🟤","ふつう","#92600A"],["hard","🪨","カタイ","#888"]].forEach(function(item){
+          var cnt=ratios.hard[item[0]]||0, pct=Math.round(cnt/ratios.hardTotal*100);
+          html+='<div style="flex:1;text-align:center"><div style="font-size:13px">'+item[1]+'</div><div style="font-size:11px;font-weight:700;color:'+item[3]+'">'+pct+'%</div><div style="font-size:10px;color:'+t.muted+'">'+cnt+'回</div></div>';
+        });
+        html+='</div></div>';
+      }
+      html+='</div></div>';
+    }
+
+    html+='<div style="display:flex;gap:8px">';
+    [["week","週間"],["month","月別"],["hour","時間帯"]].forEach(function(item){
+      var active=statsMode===item[0];
+      html+='<button onclick="setStatsMode(\''+item[0]+'\')" style="flex:1;padding:9px 0;border-radius:10px;border:none;background:'+(active?t.ac:t.cbg)+';color:'+(active?"#fff":t.sub)+';font-weight:700;font-size:13px">'+item[1]+'</button>';
+    });
+    html+='</div>';
+
+    if(statsMode==="week"){
+      var wData=getWeekData();
+      var wMax=Math.max.apply(null,wData.map(function(d){return d.count;}));
+      if(wMax===0) wMax=1;
+      html+='<div style="background:'+t.card+';border-radius:16px;padding:20px;box-shadow:0 2px 12px '+t.sh+'">';
+      html+='<div style="font-size:13px;font-weight:700;color:'+t.ac+';margin-bottom:16px">過去7日間の回数</div>';
+      html+='<div style="display:flex;align-items:flex-end;gap:6px;height:140px;margin-bottom:8px">';
+      wData.forEach(function(d){
+        var h2=Math.round((d.count/wMax)*110);
+        var isToday=d.key===todayKey();
+        html+='<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;justify-content:flex-end;height:100%">';
+        html+='<div style="font-size:11px;font-weight:700;color:'+t.ac+'">'+d.count+'</div>';
+        html+='<div style="width:100%;height:'+(h2||4)+'px;border-radius:6px 6px 0 0;background:'+(isToday?t.ac:t.ac+(d.count>0?"88":"22"))+';transition:height .4s;min-height:4px"></div>';
+        html+='</div>';
+      });
+      html+='</div>';
+      html+='<div style="display:flex;gap:6px">';
+      wData.forEach(function(d){
+        html+='<div style="flex:1;text-align:center;font-size:10px;color:'+t.muted+'">'+d.label+'</div>';
+      });
+      html+='</div></div>';
+
+      // 週の合計・平均
+      var wTotal=wData.reduce(function(s,d){return s+d.count;},0);
+      var wDaysWithRecord=wData.filter(function(d){return d.count>0;}).length;
+      html+='<div style="display:flex;gap:10px">';
+      [["7日間合計",wTotal+"\u56DE"],["記録のある日",wDaysWithRecord+"\u65E5"],["1日平均",(wTotal/7).toFixed(1)+"\u56DE"]].forEach(function(item){
+        html+='<div style="flex:1;background:'+t.card+';border-radius:12px;padding:12px 8px;text-align:center;box-shadow:0 2px 8px '+t.sh+'">';
+        html+='<div style="font-size:18px;font-weight:800;color:'+t.ac+'">'+item[1]+'</div>';
+        html+='<div style="font-size:10px;color:'+t.sub+';margin-top:2px">'+item[0]+'</div></div>';
+      });
+      html+='</div>';
+    }
+
+    if(statsMode==="month"){
+      var mData=getMonthData();
+      var mMax=Math.max.apply(null,mData.map(function(d){return d.count;}));
+      if(mMax===0) mMax=1;
+      html+='<div style="background:'+t.card+';border-radius:16px;padding:20px;box-shadow:0 2px 12px '+t.sh+'">';
+      html+='<div style="font-size:13px;font-weight:700;color:'+t.ac+';margin-bottom:16px">月別合計（過去4ヶ月）</div>';
+      html+='<div style="display:flex;align-items:flex-end;gap:8px;height:140px;margin-bottom:8px">';
+      mData.forEach(function(d,i4){
+        var h3=Math.round((d.count/mMax)*110);
+        var isCurrent=i4===mData.length-1;
+        html+='<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;justify-content:flex-end;height:100%">';
+        html+='<div style="font-size:11px;font-weight:700;color:'+t.ac+'">'+d.count+'</div>';
+        html+='<div style="width:100%;height:'+(h3||4)+'px;border-radius:6px 6px 0 0;background:'+(isCurrent?t.ac:t.ac+(d.count>0?"77":"22"))+';min-height:4px"></div>';
+        html+='</div>';
+      });
+      html+='</div>';
+      html+='<div style="display:flex;gap:8px">';
+      mData.forEach(function(d){
+        html+='<div style="flex:1;text-align:center;font-size:11px;color:'+t.muted+'">'+d.label+'</div>';
+      });
+      html+='</div></div>';
+
+      html+='<div style="background:'+t.card+';border-radius:16px;overflow:hidden;box-shadow:0 2px 8px '+t.sh+'">';
+      html+='<div style="padding:14px 16px;border-bottom:1px solid '+t.bdr+'">';
+      html+='<div style="font-size:13px;font-weight:700;color:'+t.ac+'">月別詳細</div>';
+      html+='</div>';
+      mData.forEach(function(d,i5){
+        var isCurrent=i5===mData.length-1;
+        html+='<div style="padding:14px 16px;border-bottom:'+(i5<mData.length-1?"1px solid "+t.bdr:"none")+';background:'+(isCurrent?t.eBg:"transparent")+'">';
+        // 月ラベル + 合計
+        html+='<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">';
+        html+='<span style="font-size:15px;font-weight:'+(isCurrent?800:600)+';color:'+(isCurrent?t.ac:t.tx)+'">'+d.label+(isCurrent?" 🔸":"")+'</span>';
+        html+='<span style="font-size:14px;font-weight:700;color:'+t.ac+'">'+d.count+' 回</span>';
+        html+='</div>';
+        // ベスト・ワースト・平均
+        html+='<div style="display:flex;gap:8px">';
+        html+='<div style="flex:1;background:'+t.card+';border-radius:8px;padding:7px 8px;text-align:center;border:1.5px solid #52B78844">';
+        html+='<div style="font-size:12px;font-weight:700;color:#52B788">'+(d.best!=null?fmtDur(d.best):"—")+'</div>';
+        html+='<div style="font-size:10px;color:'+t.sub+';margin-top:2px">🏆 月ベスト</div>';
+        html+='</div>';
+        html+='<div style="flex:1;background:'+t.card+';border-radius:8px;padding:7px 8px;text-align:center;border:1.5px solid #F0608044">';
+        html+='<div style="font-size:12px;font-weight:700;color:#F06080">'+(d.worst!=null?fmtDur(d.worst):"—")+'</div>';
+        html+='<div style="font-size:10px;color:'+t.sub+';margin-top:2px">🦥 月ワースト</div>';
+        html+='</div>';
+        html+='<div style="flex:1;background:'+t.card+';border-radius:8px;padding:7px 8px;text-align:center;border:1.5px solid '+t.bdr+'">';
+        html+='<div style="font-size:12px;font-weight:700;color:'+t.ac+'">'+d.avg+' 回</div>';
+        html+='<div style="font-size:10px;color:'+t.sub+';margin-top:2px">1日平均</div>';
+        html+='</div>';
+        html+='</div>';
+        html+='</div>';
+      });
+      html+='</div>';
+    }
+
+    // ── 時間帯分布
+    if(statsMode==="hour"){
+      var hDist7=getHourDist(7), hDist30=getHourDist(30);
+      var hMax7=Math.max.apply(null,hDist7)||1, hMax30=Math.max.apply(null,hDist30)||1;
+      // ピーク時間
+      var peak7=hDist7.indexOf(Math.max.apply(null,hDist7));
+      var peak30=hDist30.indexOf(Math.max.apply(null,hDist30));
+
+      function hourChart(dist, hMax, title, days){
+        var total=dist.reduce(function(a,b){return a+b;},0);
+        var h2='<div style="background:'+t.card+';border-radius:16px;padding:16px;box-shadow:0 2px 12px '+t.sh+'">';
+        h2+='<div style="font-size:13px;font-weight:700;color:'+t.ac+';margin-bottom:4px">'+title+'</div>';
+        h2+='<div style="font-size:11px;color:'+t.sub+';margin-bottom:14px">合計 '+total+' 回 ／ ピーク: '+peak7+'〜'+(peak7+1)+'時</div>';
+        // バーグラフ（24時間を4つずつ6グループで表示）
+        h2+='<div style="display:flex;gap:3px;height:100px;align-items:flex-end;margin-bottom:6px">';
+        for(var hh=0;hh<24;hh++){
+          var barH=Math.round((dist[hh]/hMax)*80)||1;
+          var isPeak=dist[hh]===Math.max.apply(null,dist)&&dist[hh]>0;
+          h2+='<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:2px">';
+          h2+='<div style="width:100%;height:'+barH+'px;border-radius:3px 3px 0 0;background:'+(isPeak?t.ac:t.ac+(dist[hh]>0?"66":"18"))+'"></div>';
+          h2+='</div>';
+        }
+        h2+='</div>';
+        // 時間ラベル（0,6,12,18,23）
+        h2+='<div style="display:flex;justify-content:space-between;padding:0 0;font-size:10px;color:'+t.muted+'">';
+        h2+='<span>0時</span><span>6時</span><span>12時</span><span>18時</span><span>23時</span>';
+        h2+='</div>';
+        h2+='</div>';
+        return h2;
+      }
+
+      html+=hourChart(hDist7,hMax7,"過去7日間の時間帯分布",7);
+
+      // 時間帯TOP3
+      var sorted=hDist30.map(function(v,i){return {h:i,v:v};}).filter(function(x){return x.v>0;}).sort(function(a,b){return b.v-a.v;});
+      if(sorted.length>0){
+        html+='<div style="background:'+t.card+';border-radius:16px;padding:16px;box-shadow:0 2px 12px '+t.sh+'">';
+        html+='<div style="font-size:13px;font-weight:700;color:'+t.ac+';margin-bottom:12px">過去30日 よく行く時間帯 TOP3</div>';
+        var medals=["🥇","🥈","🥉"];
+        sorted.slice(0,3).forEach(function(item,i){
+          html+='<div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:'+(i<2?"1px solid "+t.bdr:"none")+'">';
+          html+='<span style="font-size:22px">'+medals[i]+'</span>';
+          html+='<div style="flex:1"><span style="font-size:18px;font-weight:800;color:'+t.ac+'">'+item.h+'〜'+(item.h+1)+'時</span></div>';
+          html+='<span style="font-size:15px;font-weight:700;color:'+t.sub+'">'+item.v+' 回</span>';
+          html+='</div>';
+        });
+        html+='</div>';
+      }
+    }
+
+    html+='</div>';
+    html+='<div style="text-align:center;padding:8px 0 4px;font-size:10px;color:'+t.muted+';letter-spacing:.08em;opacity:.6">v1.2.0</div>';
+  }
+
+  document.getElementById("app").innerHTML=html;
+
+  // +ボタン
+  var addBtn=document.getElementById("add-btn");
+  if(addBtn){
+    addBtn.addEventListener("touchstart",function(){addBtn.style.transform="scale(0.93)";},{passive:true});
+    addBtn.addEventListener("touchend",function(e){e.preventDefault();addBtn.style.transform="scale(1)";addRecord();});
+    addBtn.addEventListener("click",function(e){if(e.detail===0)return;addRecord();});
+  }
+
+  // イベント委譲
+  document.getElementById("app").addEventListener("click",function(e){
+    var btn=e.target.closest("[data-del-dk]");
+    if(btn) { deleteRecord(btn.dataset.delDk,parseInt(btn.dataset.delIdx,10)); return; }
+    var btn2=e.target.closest("[data-edit-dk]");
+    if(btn2) { openEdit(btn2.dataset.editDk,parseInt(btn2.dataset.editIdx,10)); return; }
+
+  });
+
+  if(view==="today"&&lastRecord()) startTick();
+}
+
+// ═══════════════════════════════════════════
+// 起動
+// ═══════════════════════════════════════════
+loadData();
+render();
+
+// Service Worker 登録
+if('serviceWorker' in navigator){
+  navigator.serviceWorker.register('sw.js').catch(function(){});
+}
+</script>
+</body>
+</html>
